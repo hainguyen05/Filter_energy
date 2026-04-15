@@ -1,10 +1,9 @@
 from typing import Dict, Optional, List, Tuple
-import math
 
 class EnergyFilter:
-    def __init__(self, allowed_angle_deviation: float = 10.0, use_moving_average: bool = False, window_size: int = 5):
-        self.allowed_angle_deviation = allowed_angle_deviation
-        self.use_moving_average = use_moving_average
+    def __init__(self, allowed_energy_deviation_wh: float = 1.0, allowed_energy_deviation_ratio: float = 0.3, window_size: int = 5):
+        self.allowed_energy_deviation_wh = allowed_energy_deviation_wh
+        self.allowed_energy_deviation_ratio = allowed_energy_deviation_ratio
         self.window_size = window_size
         self.history: List[Tuple[Dict, Dict]] = [] 
 
@@ -19,11 +18,33 @@ class EnergyFilter:
     def get_baseline_energy(self) -> float:
         if not self.has_baseline():
             return 0.0
-        if self.use_moving_average and len(self.history) >= 2:
-            energies = [e['value'] for e, _ in self.history]
-            return sum(energies) / len(energies)
-        else:
-            return self.history[-1][0]['value']
+        return self.history[-1][0]['value']
+
+    def get_baseline_power(self) -> float:
+        if not self.has_baseline():
+            return 0.0
+        return self.history[-1][1]['value']
+
+    def estimate_efficiency(self) -> float:
+        if len(self.history) < 2:
+            return 1.0
+
+        prev_energy, prev_power = self.history[-2]
+        last_energy, last_power = self.history[-1]
+        delta_t_ms = last_energy['timestamp'] - prev_energy['timestamp']
+        if delta_t_ms <= 0:
+            return 1.0
+
+        delta_t_hours = delta_t_ms / 3600000.0
+        avg_power = (prev_power['value'] + last_power['value']) / 2.0
+        if avg_power <= 0 or delta_t_hours <= 0:
+            return 1.0
+
+        energy_delta = last_energy['value'] - prev_energy['value']
+        if energy_delta <= 0:
+            return 1.0
+
+        return energy_delta / (avg_power * delta_t_hours)
 
     def get_baseline_timestamp(self) -> int:
         if not self.has_baseline():
@@ -37,40 +58,38 @@ class EnergyFilter:
 
         baseline_energy = self.get_baseline_energy()
         baseline_timestamp = self.get_baseline_timestamp()
+        baseline_power = self.get_baseline_power()
 
         if new_energy['value'] < baseline_energy:
             return False
         if new_power['value'] < 0:
             return False
 
-        if len(self.history) < 2:
-            return True  
-
         delta_t_ms = new_energy['timestamp'] - baseline_timestamp
         if delta_t_ms <= 0:
             return False
 
-        delta_t_hours = delta_t_ms / 3600000.0  
-
-        recent_powers = [p['value'] for _, p in self.history[-min(5, len(self.history))::]]
-        avg_power = sum(recent_powers) / len(recent_powers)
-
-        expected_delta_energy = avg_power * delta_t_hours
+        delta_t_hours = delta_t_ms / 3600000.0
+        avg_power = (baseline_power + new_power['value']) / 2.0
         actual_delta_energy = new_energy['value'] - baseline_energy
 
-        if expected_delta_energy <= 0:
-            return actual_delta_energy >= 0  
+        if len(self.history) < 2:
+            return actual_delta_energy >= 0
 
-        ideal_slope = expected_delta_energy / delta_t_ms
-        actual_slope = actual_delta_energy / delta_t_ms
+        if actual_delta_energy < 0:
+            return False
 
-        if ideal_slope == 0:
-            angle_deviation = 90.0 if actual_slope != 0 else 0.0
-        else:
-            angle_radians = math.atan2(actual_slope, ideal_slope)
-            angle_deviation = abs(math.degrees(angle_radians))
+        efficiency = self.estimate_efficiency()
+        expected_delta_energy = efficiency * avg_power * delta_t_hours
+        tolerance = max(
+            self.allowed_energy_deviation_wh,
+            abs(expected_delta_energy) * self.allowed_energy_deviation_ratio,
+        )
 
-        return angle_deviation <= self.allowed_angle_deviation
+        if actual_delta_energy > expected_delta_energy + tolerance:
+            return False
+
+        return True
 
     def accept(self, new_energy: Dict, new_power: Dict) -> bool:
         valid = self.is_valid(new_energy, new_power)

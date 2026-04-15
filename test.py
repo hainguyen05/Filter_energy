@@ -75,9 +75,9 @@ def plot_session(session, paired_data):
 
 def main():
     parser = argparse.ArgumentParser(description='Test Energy Filter System')
-    parser.add_argument('--angle-deviation', type=float, default=10.0, help='Allowed angle deviation in degrees (default: 10.0)')
-    parser.add_argument('--moving-average', action='store_true', help='Use moving average for baseline')
-    parser.add_argument('--window-size', type=int, default=5, help='Window size for moving average (default: 5)')
+    parser.add_argument('--energy-deviation-wh', type=float, default=1.0, help='Allowed absolute energy deviation in Wh (default: 1.0)')
+    parser.add_argument('--energy-deviation-ratio', type=float, default=0.3, help='Allowed relative energy deviation ratio (default: 0.3)')
+    parser.add_argument('--window-size', type=int, default=5, help='Window size for baseline history (default: 5)')
 
     args = parser.parse_args()
 
@@ -95,7 +95,11 @@ def main():
         print('Không tìm thấy timestamp chung giữa file năng lượng và công suất.')
         return
 
-    session = ChargingSession(allowed_angle_deviation=args.angle_deviation, use_moving_average=args.moving_average, window_size=args.window_size)
+    session = ChargingSession(
+        allowed_energy_deviation_wh=args.energy_deviation_wh,
+        allowed_energy_deviation_ratio=args.energy_deviation_ratio,
+        window_size=args.window_size,
+    )
     for energy_point, power_point in paired_data:
         session.process_datapoint(energy_point, power_point)
 
@@ -104,13 +108,9 @@ def main():
     print(f"Tổng số điểm: {summary['total']}")
     print(f"Điểm hợp lệ: {summary['valid']}")
     print(f"Điểm không hợp lệ: {summary['invalid']}")
-    print(f"Settings: angle_deviation={args.angle_deviation}, moving_average={args.moving_average}, window_size={args.window_size}")
+    print(f'Settings: energy_deviation_wh={args.energy_deviation_wh}, energy_deviation_ratio={args.energy_deviation_ratio}, window_size={args.window_size}')
 
     plot_session(session, paired_data)
-
-
-if __name__ == '__main__':
-    main()
 
 
 if __name__ == '__main__':
