@@ -4,8 +4,10 @@ from filter import EnergyFilter
 DataPoint = Dict[str, float]
 
 class ChargingSession:
-    def __init__(self, energy_filter: Optional[EnergyFilter] = None):
-        self.filter = energy_filter or EnergyFilter()
+    def __init__(self, energy_filter: Optional[EnergyFilter] = None, allowed_angle_deviation: float = 10.0, use_moving_average: bool = False, window_size: int = 5):
+        if energy_filter is None:
+            energy_filter = EnergyFilter(allowed_angle_deviation=allowed_angle_deviation, use_moving_average=use_moving_average, window_size=window_size)
+        self.filter = energy_filter
         self.valid_points: List[tuple] = []
         self.invalid_points: List[tuple] = []
         self.started = False

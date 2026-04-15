@@ -2,6 +2,7 @@ import csv
 import datetime
 from pathlib import Path
 import matplotlib.pyplot as plt
+import argparse
 from main import ChargingSession
 
 
@@ -73,6 +74,13 @@ def plot_session(session, paired_data):
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Test Energy Filter System')
+    parser.add_argument('--angle-deviation', type=float, default=10.0, help='Allowed angle deviation in degrees (default: 10.0)')
+    parser.add_argument('--moving-average', action='store_true', help='Use moving average for baseline')
+    parser.add_argument('--window-size', type=int, default=5, help='Window size for moving average (default: 5)')
+
+    args = parser.parse_args()
+
     energy_file = Path('query_energy.csv')
     power_file = Path('query_power.csv')
     if not energy_file.exists() or not power_file.exists():
@@ -87,7 +95,7 @@ def main():
         print('Không tìm thấy timestamp chung giữa file năng lượng và công suất.')
         return
 
-    session = ChargingSession()
+    session = ChargingSession(allowed_angle_deviation=args.angle_deviation, use_moving_average=args.moving_average, window_size=args.window_size)
     for energy_point, power_point in paired_data:
         session.process_datapoint(energy_point, power_point)
 
@@ -96,8 +104,13 @@ def main():
     print(f"Tổng số điểm: {summary['total']}")
     print(f"Điểm hợp lệ: {summary['valid']}")
     print(f"Điểm không hợp lệ: {summary['invalid']}")
+    print(f"Settings: angle_deviation={args.angle_deviation}, moving_average={args.moving_average}, window_size={args.window_size}")
 
     plot_session(session, paired_data)
+
+
+if __name__ == '__main__':
+    main()
 
 
 if __name__ == '__main__':
